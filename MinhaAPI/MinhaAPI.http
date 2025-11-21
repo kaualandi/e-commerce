@@ -1,0 +1,125 @@
+@MinhaAPI_HostAddress = http://localhost:5000
+
+### ===== PRODUTOS =====
+
+### Listar todos os produtos
+GET {{MinhaAPI_HostAddress}}/api/produtos
+Accept: application/json
+
+### Criar produto
+POST {{MinhaAPI_HostAddress}}/api/produtos
+Content-Type: application/json
+
+{
+  "nome": "Smartphone Samsung Galaxy S24",
+  "preco": 1299.99,
+  "estoque": 50,
+  "descricao": "Smartphone com 128GB de armazenamento e câmera tripla",
+  "categoria": "Eletrônicos"
+}
+
+### Obter produto por ID
+GET {{MinhaAPI_HostAddress}}/api/produtos/1
+Accept: application/json
+
+### Pesquisar produtos
+GET {{MinhaAPI_HostAddress}}/api/produtos/pesquisar?termo=Samsung
+Accept: application/json
+
+### Atualizar produto
+PUT {{MinhaAPI_HostAddress}}/api/produtos/1
+Content-Type: application/json
+
+{
+  "preco": 1199.99,
+  "estoque": 45
+}
+
+### ===== CLIENTES =====
+
+### Criar cliente
+POST {{MinhaAPI_HostAddress}}/api/clientes
+Content-Type: application/json
+
+{
+  "nome": "João Silva",
+  "email": "joao.silva@email.com",
+  "cpf": "12345678901",
+  "telefone": "(11) 99999-9999"
+}
+
+### Listar clientes
+GET {{MinhaAPI_HostAddress}}/api/clientes
+Accept: application/json
+
+### Obter cliente por ID
+GET {{MinhaAPI_HostAddress}}/api/clientes/1
+Accept: application/json
+
+### ===== CARRINHO =====
+
+### Obter carrinho do cliente
+GET {{MinhaAPI_HostAddress}}/api/carrinho/cliente/1
+Accept: application/json
+
+### Adicionar item ao carrinho
+POST {{MinhaAPI_HostAddress}}/api/carrinho/cliente/1/itens
+Content-Type: application/json
+
+{
+  "produtoId": 1,
+  "quantidade": 2
+}
+
+### Alterar quantidade de item
+PUT {{MinhaAPI_HostAddress}}/api/carrinho/cliente/1/itens
+Content-Type: application/json
+
+{
+  "produtoId": 1,
+  "novaQuantidade": 3
+}
+
+### ===== PEDIDOS =====
+
+### Criar pedido
+POST {{MinhaAPI_HostAddress}}/api/pedidos
+Content-Type: application/json
+
+{
+  "clienteId": 1,
+  "enderecoEntrega": "Rua das Flores, 123, São Paulo/SP",
+  "observacoes": "Entregar no período da manhã",
+  "codigoCupom": "BEMVINDO10",
+  "cepDestino": "01234-567",
+  "tipoFrete": 1
+}
+
+### Listar pedidos
+GET {{MinhaAPI_HostAddress}}/api/pedidos
+Accept: application/json
+
+### Finalizar pedido com PIX
+POST {{MinhaAPI_HostAddress}}/api/pedidos/1/finalizar
+Content-Type: application/json
+
+{
+  "valor": 1435.99,
+  "chavePix": "joao.silva@email.com",
+  "tipoPagamento": "PIX"
+}
+
+### Finalizar pedido com Cartão
+POST {{MinhaAPI_HostAddress}}/api/pedidos/1/finalizar
+Content-Type: application/json
+
+{
+  "valor": 1435.99,
+  "numeroCartao": "1234567890123456",
+  "nomeTitular": "JOAO SILVA",
+  "cvv": "123",
+  "dataVencimento": "2028-12-01T00:00:00",
+  "tipo": 1,
+  "parcelas": 3,
+  "tipoPagamento": "Cartão Credito"
+}
