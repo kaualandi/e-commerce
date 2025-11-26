@@ -1,0 +1,795 @@
+@startuml E-Commerce System - Class Diagram
+
+!define ENTITY_COLOR #E8F5E9
+!define SERVICE_COLOR #E3F2FD
+!define REPOSITORY_COLOR #FFF3E0
+!define CONTROLLER_COLOR #F3E5F5
+!define DTO_COLOR #FFFDE7
+!define INTERFACE_COLOR #E0F2F1
+!define EXCEPTION_COLOR #FFEBEE
+!define STRATEGY_COLOR #F1F8E9
+
+skinparam classAttributeIconSize 0
+skinparam backgroundColor #FFFFFF
+skinparam class {
+    BorderColor #424242
+    ArrowColor #757575
+}
+
+package "Dominio (Domain Layer)" {
+
+    package "Entidades" <<Rectangle>> {
+        class Cliente <<Entity>> ENTITY_COLOR {
+            - _nome: string
+            - _email: string
+            - _cpf: string
+            + Id: int
+            + Nome: string
+            + Email: string
+            + Cpf: string
+            + Telefone: string
+            + DataCadastro: DateTime
+            + Ativo: bool
+            --
+            + Cliente()
+            + Cliente(nome, email, cpf, telefone)
+        }
+
+        class Produto <<Entity>> ENTITY_COLOR {
+            - _nome: string
+            - _preco: decimal
+            - _estoque: int
+            + Id: int
+            + Nome: string
+            + Preco: decimal
+            + Estoque: int
+            + Descricao: string
+            + Categoria: string
+            + Ativo: bool
+            --
+            + Produto()
+            + Produto(nome, preco, estoque, descricao, categoria)
+            + ReducirEstoque(quantidade: int): void
+            + AdicionarEstoque(quantidade: int): void
+            + TemEstoqueSuficiente(quantidade: int): bool
+        }
+
+        class ItemCarrinho <<Entity>> ENTITY_COLOR {
+            - _quantidade: int
+            - _precoUnitario: decimal
+            + Id: int
+            + ProdutoId: int
+            + Produto: Produto?
+            + Quantidade: int
+            + PrecoUnitario: decimal
+            + Subtotal: decimal <<computed>>
+            --
+            + ItemCarrinho()
+            + ItemCarrinho(produto, quantidade)
+            + AlterarQuantidade(novaQuantidade: int): void
+            + AtualizarPreco(novoPreco: decimal): void
+        }
+
+        class Carrinho <<Entity>> ENTITY_COLOR {
+            - _itens: List<ItemCarrinho>
+            + Id: int
+            + ClienteId: int
+            + Cliente: Cliente?
+            + DataCriacao: DateTime
+            + DataAtualizacao: DateTime?
+            + Itens: IReadOnlyList<ItemCarrinho>
+            + Total: decimal <<computed>>
+            + QuantidadeTotalItens: int <<computed>>
+            + EstaVazio: bool <<computed>>
+            --
+            + Carrinho()
+            + Carrinho(clienteId: int)
+            + AdicionarItem(produto, quantidade): void
+            + RemoverItem(produtoId: int): void
+            + AlterarQuantidadeItem(produtoId, novaQuantidade): void
+            + Limpar(): void
+            + ValidarParaFinalizacao(): void
+        }
+
+        class Pedido <<Entity>> ENTITY_COLOR {
+            - _itens: List<ItemCarrinho>
+            + Id: int
+            + ClienteId: int
+            + Cliente: Cliente?
+            + DataPedido: DateTime
+            + Status: StatusPedido
+            + SubTotal: decimal <<computed>>
+            + ValorFrete: decimal
+            + ValorDesconto: decimal
+            + Total: decimal <<computed>>
+            + Itens: IReadOnlyList<ItemCarrinho>
+            + Pagamento: Pagamento?
+            + EnderecoEntrega: string?
+            + Observacoes: string?
+            --
+            + Pedido()
+            + Pedido(clienteId, itens)
+            + {static} CriarDe(carrinho): Pedido
+            + DefinirFrete(valorFrete: decimal): void
+            + AplicarDesconto(valorDesconto: decimal): void
+            + DefinirPagamento(pagamento): void
+            + ProcessarPagamento(): bool
+            + Cancelar(motivo: string): void
+            + IniciarPreparacao(): void
+            + IniciarTransito(): void
+            + ConfirmarEntrega(): void
+        }
+
+        enum StatusPedido {
+            Pendente
+            ProcessandoPagamento
+            Confirmado
+            EmPreparacao
+            EmTransito
+            Entregue
+            Cancelado
+            PagamentoRejeitado
+        }
+    }
+
+    package "Pagamentos" <<Rectangle>> {
+        abstract class Pagamento <<Abstract>> ENTITY_COLOR {
+            - _valor: decimal
+            + Id: int
+            + Valor: decimal
+            + DataProcessamento: DateTime
+            + Status: StatusPagamento
+            --
+            # Pagamento()
+            # Pagamento(valor: decimal)
+            + {abstract} ProcessarPagamento(): bool
+            + {abstract} ObterDescricaoMetodo(): string
+            + {abstract} CalcularTaxa(): decimal
+            + ConfirmarPagamento(): void
+            + RejeitarPagamento(motivo: string): void
+        }
+
+        class PagamentoPix ENTITY_COLOR {
+            - _chavePix: string
+            + ChavePix: string
+            + QrCode: string
+            + DataVencimento: DateTime?
+            --
+            + PagamentoPix()
+            + PagamentoPix(valor, chavePix)
+            + ProcessarPagamento(): bool
+            + ObterDescricaoMetodo(): string
+            + CalcularTaxa(): decimal
+            + EstaExpirado(): bool
+        }
+
+        class PagamentoCartao ENTITY_COLOR {
+            - _numeroCartao: string
+            - _nomeTitular: string
+            - _cvv: string
+            + NumeroCartao: string
+            + NomeTitular: string
+            + Cvv: string
+            + DataVencimento: DateTime
+            + Tipo: TipoCartao
+            + Parcelas: int
+            --
+            + PagamentoCartao()
+            + PagamentoCartao(valor, numeroCartao, nomeTitular, ...)
+            + ProcessarPagamento(): bool
+            + ObterDescricaoMetodo(): string
+            + CalcularTaxa(): decimal
+            + CalcularValorComTaxa(): decimal
+            + ObterNumeroMascarado(): string
+        }
+
+        enum TipoCartao {
+            Debito
+            Credito
+        }
+
+        enum StatusPagamento {
+            Pendente
+            Processando
+            Aprovado
+            Rejeitado
+            Cancelado
+        }
+    }
+
+    package "Interfaces" <<Rectangle>> {
+        interface IProdutoRepository <<Interface>> INTERFACE_COLOR {
+            + ObterPorIdAsync(id: int): Task<Produto?>
+            + ObterTodosAsync(): Task<IEnumerable<Produto>>
+            + ObterPorCategoriaAsync(categoria): Task<IEnumerable<Produto>>
+            + PesquisarAsync(termo: string): Task<IEnumerable<Produto>>
+            + AdicionarAsync(produto: Produto): Task<int>
+            + AtualizarAsync(produto: Produto): Task
+            + RemoverAsync(id: int): Task
+            + ExisteAsync(id: int): Task<bool>
+        }
+
+        interface IClienteRepository <<Interface>> INTERFACE_COLOR {
+            + ObterPorIdAsync(id: int): Task<Cliente?>
+            + ObterPorEmailAsync(email): Task<Cliente?>
+            + ObterPorCpfAsync(cpf): Task<Cliente?>
+            + ObterTodosAsync(): Task<IEnumerable<Cliente>>
+            + AdicionarAsync(cliente: Cliente): Task<int>
+            + AtualizarAsync(cliente: Cliente): Task
+            + RemoverAsync(id: int): Task
+            + ExisteAsync(id: int): Task<bool>
+            + ExisteEmailAsync(email: string): Task<bool>
+            + ExisteCpfAsync(cpf: string): Task<bool>
+        }
+
+        interface ICarrinhoRepository <<Interface>> INTERFACE_COLOR {
+            + ObterPorIdAsync(id: int): Task<Carrinho?>
+            + ObterPorClienteIdAsync(clienteId): Task<Carrinho?>
+            + AdicionarAsync(carrinho: Carrinho): Task<int>
+            + AtualizarAsync(carrinho: Carrinho): Task
+            + RemoverAsync(id: int): Task
+            + ExisteAsync(id: int): Task<bool>
+        }
+
+        interface IPedidoRepository <<Interface>> INTERFACE_COLOR {
+            + ObterPorIdAsync(id: int): Task<Pedido?>
+            + ObterPorClienteIdAsync(clienteId): Task<IEnumerable<Pedido>>
+            + ObterTodosAsync(): Task<IEnumerable<Pedido>>
+            + ObterPorStatusAsync(status): Task<IEnumerable<Pedido>>
+            + AdicionarAsync(pedido: Pedido): Task<int>
+            + AtualizarAsync(pedido: Pedido): Task
+            + RemoverAsync(id: int): Task
+            + ExisteAsync(id: int): Task<bool>
+        }
+
+        interface ICalculadoraFrete <<Strategy>> INTERFACE_COLOR {
+            + CalcularFrete(cepOrigem, cepDestino, peso, valor): decimal
+            + ObterDescricao(): string
+            + ObterTempoEstimado(cepOrigem, cepDestino): TimeSpan
+        }
+
+        interface ICalculadoraDesconto <<Strategy>> INTERFACE_COLOR {
+            + CalcularDesconto(valorTotal, codigoCupom?): decimal
+            + ValidarCupom(codigoCupom: string): bool
+            + ObterDescricao(): string
+        }
+
+        interface IProcessadorPagamento <<Strategy>> INTERFACE_COLOR {
+            + ProcessarPagamentoAsync(pagamento): Task<bool>
+            + CalcularTaxa(pagamento: Pagamento): decimal
+            + ObterProvedor(): string
+        }
+
+        interface IValidadorEstoque <<Strategy>> INTERFACE_COLOR {
+            + ValidarDisponibilidade(produtoId, quantidade): bool
+            + ReservarEstoqueAsync(produtoId, quantidade): Task<bool>
+            + LiberarReservaAsync(produtoId, quantidade): Task
+        }
+    }
+
+    package "Estrategias - Frete" <<Rectangle>> {
+        class FreteCorreios <<Strategy>> STRATEGY_COLOR {
+            + CalcularFrete(cepOrigem, cepDestino, peso, valor): decimal
+            + ObterDescricao(): string
+            + ObterTempoEstimado(cepOrigem, cepDestino): TimeSpan
+            - SimularDistancia(cepOrigem, cepDestino): int
+        }
+
+        class FreteSedex <<Strategy>> STRATEGY_COLOR {
+            + CalcularFrete(cepOrigem, cepDestino, peso, valor): decimal
+            + ObterDescricao(): string
+            + ObterTempoEstimado(cepOrigem, cepDestino): TimeSpan
+        }
+
+        class FreteGratis <<Strategy>> STRATEGY_COLOR {
+            - _valorMinimoFreteGratis: decimal
+            --
+            + FreteGratis(valorMinimo: decimal)
+            + CalcularFrete(cepOrigem, cepDestino, peso, valor): decimal
+            + ObterDescricao(): string
+            + ObterTempoEstimado(cepOrigem, cepDestino): TimeSpan
+        }
+    }
+
+    package "Estrategias - Desconto" <<Rectangle>> {
+        class DescontoPorcentagem <<Strategy>> STRATEGY_COLOR {
+            - _percentual: decimal
+            - _valorMinimo: decimal
+            --
+            + DescontoPorcentagem(percentual, valorMinimo)
+            + CalcularDesconto(valorTotal, codigoCupom?): decimal
+            + ValidarCupom(codigoCupom: string): bool
+            + ObterDescricao(): string
+        }
+
+        class DescontoValorFixo <<Strategy>> STRATEGY_COLOR {
+            - _valorDesconto: decimal
+            - _valorMinimo: decimal
+            --
+            + DescontoValorFixo(valorDesconto, valorMinimo)
+            + CalcularDesconto(valorTotal, codigoCupom?): decimal
+            + ValidarCupom(codigoCupom: string): bool
+            + ObterDescricao(): string
+        }
+
+        class DescontoCupom <<Strategy>> STRATEGY_COLOR {
+            - _cupons: Dictionary<string, (decimal, DateTime, decimal)>
+            --
+            + DescontoCupom()
+            + CalcularDesconto(valorTotal, codigoCupom?): decimal
+            + ValidarCupom(codigoCupom: string): bool
+            + ObterDescricao(): string
+            + ObterCuponsValidos(): IReadOnlyDictionary
+        }
+    }
+
+    package "Exceptions" <<Rectangle>> {
+        class EstoqueInsuficienteException <<Exception>> EXCEPTION_COLOR
+        class ProdutoNaoEncontradoException <<Exception>> EXCEPTION_COLOR
+        class ClienteNaoEncontradoException <<Exception>> EXCEPTION_COLOR
+        class CarrinhoVazioException <<Exception>> EXCEPTION_COLOR
+        class QuantidadeInvalidaException <<Exception>> EXCEPTION_COLOR
+        class PrecoInvalidoException <<Exception>> EXCEPTION_COLOR
+        class PagamentoInvalidoException <<Exception>> EXCEPTION_COLOR
+    }
+}
+
+package "Application (Application Layer)" {
+    package "Services" <<Rectangle>> {
+        class ClientesService <<Service>> SERVICE_COLOR {
+            - _clienteRepository: IClienteRepository
+            --
+            + ClientesService(clienteRepository)
+            + ObterTodosAsync(): Task<IEnumerable<ClienteDTO>>
+            + ObterPorIdAsync(id): Task<ClienteDTO?>
+            + ObterPorEmailAsync(email): Task<ClienteDTO?>
+            + CriarAsync(criarClienteDto): Task<int>
+            + AtualizarAsync(id, atualizarClienteDto): Task
+            + RemoverAsync(id: int): Task
+        }
+
+        class ProdutosService <<Service>> SERVICE_COLOR {
+            - _produtoRepository: IProdutoRepository
+            --
+            + ProdutosService(produtoRepository)
+            + ObterTodosAsync(): Task<IEnumerable<ProdutoDTO>>
+            + ObterPorIdAsync(id): Task<ProdutoDTO?>
+            + ObterPorCategoriaAsync(categoria): Task<IEnumerable<ProdutoDTO>>
+            + PesquisarAsync(termo: string): Task<IEnumerable<ProdutoDTO>>
+            + CriarAsync(criarProdutoDto): Task<int>
+            + AtualizarAsync(id, atualizarProdutoDto): Task
+            + RemoverAsync(id: int): Task
+            + AdicionarEstoqueAsync(id, quantidade): Task
+        }
+
+        class CarrinhoService <<Service>> SERVICE_COLOR {
+            - _carrinhoRepository: ICarrinhoRepository
+            - _produtoRepository: IProdutoRepository
+            - _clienteRepository: IClienteRepository
+            --
+            + CarrinhoService(carrinhoRepo, produtoRepo, clienteRepo)
+            + ObterCarrinhoDoClienteAsync(clienteId): Task<CarrinhoDTO?>
+            + ObterOuCriarCarrinhoAsync(clienteId): Task<CarrinhoDTO>
+            + AdicionarItemAsync(clienteId, adicionarItemDto): Task
+            + RemoverItemAsync(clienteId, produtoId): Task
+            + AlterarQuantidadeItemAsync(clienteId, alterarDto): Task
+            + LimparCarrinhoAsync(clienteId: int): Task
+        }
+
+        class PedidoService <<Service>> SERVICE_COLOR {
+            - _pedidoRepository: IPedidoRepository
+            - _carrinhoRepository: ICarrinhoRepository
+            - _clienteRepository: IClienteRepository
+            - _produtoRepository: IProdutoRepository
+            - _calculadoraFrete: ICalculadoraFrete
+            - _calculadoraDesconto: ICalculadoraDesconto
+            --
+            + PedidoService(pedidoRepo, carrinhoRepo, clienteRepo, ...)
+            + ObterPedidosDoClienteAsync(clienteId): Task<IEnumerable<PedidoDTO>>
+            + ObterPorIdAsync(id): Task<PedidoDTO?>
+            + ObterTodosAsync(): Task<IEnumerable<PedidoDTO>>
+            + CriarPedidoAsync(criarPedidoDto): Task<int>
+            + ProcessarPagamentoAsync(finalizarDto): Task<bool>
+            + AtualizarStatusAsync(pedidoId, novoStatus): Task
+        }
+    }
+
+    package "DTOs" <<Rectangle>> {
+        class ClienteDTO <<DTO>> DTO_COLOR {
+            + Id: int
+            + Nome: string
+            + Email: string
+            + Cpf: string
+            + Telefone: string
+            + DataCadastro: DateTime
+            + Ativo: bool
+        }
+
+        class CriarClienteDTO <<DTO>> DTO_COLOR {
+            + Nome: string
+            + Email: string
+            + Cpf: string
+            + Telefone: string
+        }
+
+        class AtualizarClienteDTO <<DTO>> DTO_COLOR {
+            + Nome: string?
+            + Email: string?
+            + Telefone: string?
+            + Ativo: bool?
+        }
+
+        class ProdutoDTO <<DTO>> DTO_COLOR {
+            + Id: int
+            + Nome: string
+            + Preco: decimal
+            + Estoque: int
+            + Descricao: string
+            + Categoria: string
+            + Ativo: bool
+        }
+
+        class CriarProdutoDTO <<DTO>> DTO_COLOR {
+            + Nome: string
+            + Preco: decimal
+            + Estoque: int
+            + Descricao: string
+            + Categoria: string
+        }
+
+        class AtualizarProdutoDTO <<DTO>> DTO_COLOR {
+            + Nome: string?
+            + Preco: decimal?
+            + Estoque: int?
+            + Descricao: string?
+            + Categoria: string?
+            + Ativo: bool?
+        }
+
+        class CarrinhoDTO <<DTO>> DTO_COLOR {
+            + Id: int
+            + ClienteId: int
+            + Itens: List<ItemCarrinhoDTO>
+            + Total: decimal
+            + QuantidadeTotalItens: int
+            + DataCriacao: DateTime
+            + DataAtualizacao: DateTime?
+        }
+
+        class ItemCarrinhoDTO <<DTO>> DTO_COLOR {
+            + Id: int
+            + ProdutoId: int
+            + NomeProduto: string
+            + Quantidade: int
+            + PrecoUnitario: decimal
+            + Subtotal: decimal
+        }
+
+        class AdicionarItemCarrinhoDTO <<DTO>> DTO_COLOR {
+            + ProdutoId: int
+            + Quantidade: int
+        }
+
+        class AlterarQuantidadeItemDTO <<DTO>> DTO_COLOR {
+            + ProdutoId: int
+            + NovaQuantidade: int
+        }
+
+        class PedidoDTO <<DTO>> DTO_COLOR {
+            + Id: int
+            + ClienteId: int
+            + NomeCliente: string
+            + DataPedido: DateTime
+            + Status: StatusPedido
+            + Itens: List<ItemCarrinhoDTO>
+            + SubTotal: decimal
+            + ValorFrete: decimal
+            + ValorDesconto: decimal
+            + Total: decimal
+            + Pagamento: object?
+            + EnderecoEntrega: string?
+            + Observacoes: string?
+        }
+
+        class CriarPedidoDTO <<DTO>> DTO_COLOR {
+            + ClienteId: int
+            + EnderecoEntrega: string
+            + Observacoes: string?
+            + CodigoCupom: string?
+            + CepDestino: string
+            + TipoFrete: TipoFrete
+        }
+
+        class FinalizarPedidoDTO <<DTO>> DTO_COLOR {
+            + PedidoId: int
+            + Pagamento: PagamentoDTO
+        }
+
+        abstract class PagamentoDTO <<DTO>> DTO_COLOR {
+            + Valor: decimal
+            + {abstract} TipoPagamento: string
+        }
+
+        class PagamentoPixDTO <<DTO>> DTO_COLOR {
+            + ChavePix: string
+            + TipoPagamento: string
+        }
+
+        class PagamentoCartaoDTO <<DTO>> DTO_COLOR {
+            + NumeroCartao: string
+            + NomeTitular: string
+            + Cvv: string
+            + DataVencimento: DateTime
+            + Tipo: TipoCartao
+            + Parcelas: int
+            + TipoPagamento: string
+        }
+
+        enum TipoFrete {
+            Pac
+            Sedex
+            FreteGratis
+        }
+    }
+}
+
+package "Infraestrutura (Infrastructure Layer)" {
+    package "Repositorios" <<Rectangle>> {
+        class ProdutoRepository <<Repository>> REPOSITORY_COLOR {
+            - _produtos: List<Produto>
+            - _proximoId: int
+            --
+            + ObterPorIdAsync(id): Task<Produto?>
+            + ObterTodosAsync(): Task<IEnumerable<Produto>>
+            + ObterPorCategoriaAsync(categoria): Task<IEnumerable<Produto>>
+            + PesquisarAsync(termo): Task<IEnumerable<Produto>>
+            + AdicionarAsync(produto): Task<int>
+            + AtualizarAsync(produto): Task
+            + RemoverAsync(id): Task
+            + ExisteAsync(id): Task<bool>
+        }
+
+        class ClienteRepository <<Repository>> REPOSITORY_COLOR {
+            - _clientes: List<Cliente>
+            - _proximoId: int
+            --
+            + ObterPorIdAsync(id): Task<Cliente?>
+            + ObterPorEmailAsync(email): Task<Cliente?>
+            + ObterPorCpfAsync(cpf): Task<Cliente?>
+            + ObterTodosAsync(): Task<IEnumerable<Cliente>>
+            + AdicionarAsync(cliente): Task<int>
+            + AtualizarAsync(cliente): Task
+            + RemoverAsync(id): Task
+            + ExisteAsync(id): Task<bool>
+            + ExisteEmailAsync(email): Task<bool>
+            + ExisteCpfAsync(cpf): Task<bool>
+        }
+
+        class CarrinhoRepository <<Repository>> REPOSITORY_COLOR {
+            - _carrinhos: List<Carrinho>
+            - _proximoId: int
+            --
+            + ObterPorIdAsync(id): Task<Carrinho?>
+            + ObterPorClienteIdAsync(clienteId): Task<Carrinho?>
+            + AdicionarAsync(carrinho): Task<int>
+            + AtualizarAsync(carrinho): Task
+            + RemoverAsync(id): Task
+            + ExisteAsync(id): Task<bool>
+        }
+
+        class PedidoRepository <<Repository>> REPOSITORY_COLOR {
+            - _pedidos: List<Pedido>
+            - _proximoId: int
+            --
+            + ObterPorIdAsync(id): Task<Pedido?>
+            + ObterPorClienteIdAsync(clienteId): Task<IEnumerable<Pedido>>
+            + ObterTodosAsync(): Task<IEnumerable<Pedido>>
+            + ObterPorStatusAsync(status): Task<IEnumerable<Pedido>>
+            + AdicionarAsync(pedido): Task<int>
+            + AtualizarAsync(pedido): Task
+            + RemoverAsync(id): Task
+            + ExisteAsync(id): Task<bool>
+        }
+    }
+}
+
+package "MinhaAPI (Presentation Layer)" {
+    package "Controllers" <<Rectangle>> {
+        class ClientesController <<Controller>> CONTROLLER_COLOR {
+            - _clientesService: ClientesService
+            --
+            + ClientesController(clientesService)
+            + ObterTodos(): Task<IActionResult>
+            + ObterPorId(id): Task<IActionResult>
+            + ObterPorEmail(email): Task<IActionResult>
+            + Criar(criarClienteDto): Task<IActionResult>
+            + Atualizar(id, atualizarDto): Task<IActionResult>
+            + Remover(id): Task<IActionResult>
+        }
+
+        class ProdutosController <<Controller>> CONTROLLER_COLOR {
+            - _produtosService: ProdutosService
+            --
+            + ProdutosController(produtosService)
+            + ObterTodos(): Task<IActionResult>
+            + ObterPorId(id): Task<IActionResult>
+            + ObterPorCategoria(categoria): Task<IActionResult>
+            + Pesquisar(termo): Task<IActionResult>
+            + Criar(criarProdutoDto): Task<IActionResult>
+            + Atualizar(id, atualizarDto): Task<IActionResult>
+            + Remover(id): Task<IActionResult>
+            + AdicionarEstoque(id, quantidade): Task<IActionResult>
+        }
+
+        class CarrinhoController <<Controller>> CONTROLLER_COLOR {
+            - _carrinhoService: CarrinhoService
+            --
+            + CarrinhoController(carrinhoService)
+            + ObterCarrinhoDoCliente(clienteId): Task<IActionResult>
+            + AdicionarItem(clienteId, adicionarDto): Task<IActionResult>
+            + RemoverItem(clienteId, produtoId): Task<IActionResult>
+            + AlterarQuantidadeItem(clienteId, alterarDto): Task<IActionResult>
+            + LimparCarrinho(clienteId): Task<IActionResult>
+        }
+
+        class PedidosController <<Controller>> CONTROLLER_COLOR {
+            - _pedidoService: PedidoService
+            --
+            + PedidosController(pedidoService)
+            + ObterTodos(): Task<IActionResult>
+            + ObterPorId(id): Task<IActionResult>
+            + ObterPedidosDoCliente(clienteId): Task<IActionResult>
+            + Criar(criarPedidoDto): Task<IActionResult>
+            + FinalizarPedido(id, pagamentoDto): Task<IActionResult>
+            + AtualizarStatus(id, novoStatus): Task<IActionResult>
+        }
+    }
+}
+
+' ========== RELACIONAMENTOS ==========
+
+' Herança (Inheritance)
+PagamentoPix --|> Pagamento
+PagamentoCartao --|> Pagamento
+PagamentoPixDTO --|> PagamentoDTO
+PagamentoCartaoDTO --|> PagamentoDTO
+
+' Composição (Composition) - Forte
+Carrinho *-- ItemCarrinho : contém >
+Pedido *-- ItemCarrinho : contém >
+
+' Associação (Association)
+Carrinho --> Cliente : pertence a >
+ItemCarrinho --> Produto : referencia >
+Pedido --> Cliente : pertence a >
+Pedido --> Pagamento : possui >
+Pedido ..> StatusPedido : usa
+Pagamento ..> StatusPagamento : usa
+PagamentoCartao ..> TipoCartao : usa
+
+' Implementação de Interfaces (Realization)
+ProdutoRepository ..|> IProdutoRepository
+ClienteRepository ..|> IClienteRepository
+CarrinhoRepository ..|> ICarrinhoRepository
+PedidoRepository ..|> IPedidoRepository
+
+FreteCorreios ..|> ICalculadoraFrete
+FreteSedex ..|> ICalculadoraFrete
+FreteGratis ..|> ICalculadoraFrete
+
+DescontoPorcentagem ..|> ICalculadoraDesconto
+DescontoValorFixo ..|> ICalculadoraDesconto
+DescontoCupom ..|> ICalculadoraDesconto
+
+' Dependências entre Estratégias
+FreteSedex ..> FreteCorreios : usa internamente
+FreteGratis ..> FreteCorreios : usa internamente
+
+' Dependências dos Services
+ClientesService --> IClienteRepository : usa >
+ProdutosService --> IProdutoRepository : usa >
+CarrinhoService --> ICarrinhoRepository : usa >
+CarrinhoService --> IProdutoRepository : usa >
+CarrinhoService --> IClienteRepository : usa >
+PedidoService --> IPedidoRepository : usa >
+PedidoService --> ICarrinhoRepository : usa >
+PedidoService --> IClienteRepository : usa >
+PedidoService --> IProdutoRepository : usa >
+PedidoService --> ICalculadoraFrete : usa >
+PedidoService --> ICalculadoraDesconto : usa >
+
+' Dependências dos Controllers
+ClientesController --> ClientesService : usa >
+ProdutosController --> ProdutosService : usa >
+CarrinhoController --> CarrinhoService : usa >
+PedidosController --> PedidoService : usa >
+
+' DTOs usados pelos Services
+ClientesService ..> ClienteDTO : cria
+ClientesService ..> CriarClienteDTO : consome
+ClientesService ..> AtualizarClienteDTO : consome
+
+ProdutosService ..> ProdutoDTO : cria
+ProdutosService ..> CriarProdutoDTO : consome
+ProdutosService ..> AtualizarProdutoDTO : consome
+
+CarrinhoService ..> CarrinhoDTO : cria
+CarrinhoService ..> ItemCarrinhoDTO : cria
+CarrinhoService ..> AdicionarItemCarrinhoDTO : consome
+CarrinhoService ..> AlterarQuantidadeItemDTO : consome
+
+PedidoService ..> PedidoDTO : cria
+PedidoService ..> CriarPedidoDTO : consome
+PedidoService ..> FinalizarPedidoDTO : consome
+PedidoService ..> PagamentoDTO : consome
+CriarPedidoDTO ..> TipoFrete : usa
+
+' Relações DTO
+CarrinhoDTO --> ItemCarrinhoDTO : contém
+PedidoDTO --> ItemCarrinhoDTO : contém
+FinalizarPedidoDTO --> PagamentoDTO : contém
+
+' Exceções lançadas pelas Entidades
+Produto ..> EstoqueInsuficienteException : lança
+Produto ..> PrecoInvalidoException : lança
+Produto ..> QuantidadeInvalidaException : lança
+ItemCarrinho ..> EstoqueInsuficienteException : lança
+ItemCarrinho ..> PrecoInvalidoException : lança
+ItemCarrinho ..> QuantidadeInvalidaException : lança
+Carrinho ..> EstoqueInsuficienteException : lança
+Carrinho ..> CarrinhoVazioException : lança
+Pedido ..> CarrinhoVazioException : lança
+Pedido ..> PagamentoInvalidoException : lança
+Pagamento ..> PrecoInvalidoException : lança
+Pagamento ..> PagamentoInvalidoException : lança
+
+note top of "Dominio (Domain Layer)"
+  <b>Camada de Domínio</b>
+  - Contém a lógica de negócio
+  - Independente de frameworks
+  - Define interfaces (portas)
+end note
+
+note top of "Application (Application Layer)"
+  <b>Camada de Aplicação</b>
+  - Orquestra casos de uso
+  - Coordena entidades do domínio
+  - Converte entre Entidades e DTOs
+end note
+
+note top of "Infraestrutura (Infrastructure Layer)"
+  <b>Camada de Infraestrutura</b>
+  - Implementa as interfaces do domínio
+  - Acesso a dados (in-memory)
+  - Persistência e recursos externos
+end note
+
+note top of "MinhaAPI (Presentation Layer)"
+  <b>Camada de Apresentação</b>
+  - API REST (ASP.NET Core)
+  - Expõe endpoints HTTP
+  - Validação de entrada
+end note
+
+note right of Pagamento
+  <b>Template Method Pattern</b>
+  Define o template do processo
+  de pagamento, subclasses
+  implementam detalhes
+end note
+
+note right of ICalculadoraFrete
+  <b>Strategy Pattern</b>
+  Permite trocar algoritmos
+  de cálculo em tempo de
+  execução
+end note
+
+note left of Pedido
+  <b>Factory Method</b>
+  CriarDe(Carrinho) cria
+  um Pedido a partir de
+  um Carrinho
+end note
+
+@enduml
